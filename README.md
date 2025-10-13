@@ -68,8 +68,9 @@ CogniFetch is designed to reduce the time students spend searching for education
 
 ## Authors
 
+- **Rahul Juluru** - Co-author and collaborator.  
+  GitHub: [Rahul Juluru](https://github.com/rahuljuluru92)
+  
 - **Kamal Poshala** - Co-author and collaborator.  
   GitHub: [Kamal Poshala](https://github.com/Kamal-Poshala)
 
-- **Rahul Juluru** - Co-author and collaborator.  
-  GitHub: [Rahul Juluru](https://github.com/rahuljuluru92)
