@@ -65,3 +65,11 @@ CogniFetch is designed to reduce the time students spend searching for education
 - Integration of subject/concept recommendation system based on frequent searches.
 - User progress tracking in different subjects.
 - Merging of playlists to reduce video playback time.
+
+## Authors
+
+- **Kamal Poshala** - Co-author and collaborator.  
+  GitHub: [Kamal Poshala](https://github.com/Kamal-Poshala)
+
+- **Rahul Juluru** - Co-author and collaborator.  
+  GitHub: [Rahul Juluru](https://github.com/rahuljuluru92)
