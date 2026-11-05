@@ -15,9 +15,13 @@ Save subjects to your profile and come back to them any time.
 - **Export** any list as a Markdown checklist
 - **Account management**: change your password (signs out other devices) or delete your account and data
 
-| Home | Scan | Results | Topic |
-| --- | --- | --- | --- |
-| ![Home](docs/screenshots/Picture1.jpg) | ![Scan](docs/screenshots/Picture2.jpg) | ![Results](docs/screenshots/Picture3.jpg) | ![Topic](docs/screenshots/Picture4.jpg) |
+![Results page: topic checklist with progress, video player, alternative videos and Wikipedia summary](docs/screenshots/results.jpg)
+
+| Home | Scan or paste a syllabus |
+| --- | --- |
+| ![Home page](docs/screenshots/home.jpg) | ![Scan page in paste-text mode](docs/screenshots/scan.jpg) |
+| **AI quiz** | **Profile with progress per subject** |
+| ![Quiz with answers, explanations and score](docs/screenshots/quiz.jpg) | ![Profile page with saved subjects and progress bars](docs/screenshots/profile.jpg) |
 
 ## Architecture
 
