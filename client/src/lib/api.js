@@ -53,14 +53,22 @@ export const api = {
   logout: () => request("/auth/logout", { method: "POST" }),
   deleteAccount: (password) => request("/auth/me", { method: "DELETE", body: { password } }),
 
-  extract: (file, { signal } = {}) => {
+  changePassword: (currentPassword, newPassword) =>
+    request("/auth/password", { method: "PATCH", body: { currentPassword, newPassword } }),
+
+  extract: (files, { signal } = {}) => {
     const form = new FormData();
-    form.append("image", file);
+    for (const file of [files].flat()) form.append("images", file);
     return request("/extract", { method: "POST", body: form, signal });
   },
+  extractText: (text, { signal } = {}) => request("/extract/text", { method: "POST", body: { text }, signal }),
   searchVideo: (params, { signal } = {}) => request("/videos/search", { method: "POST", body: params, signal }),
 
   history: () => request("/history"),
-  saveHistory: (subject, concepts) => request("/history", { method: "PUT", body: { subject, concepts } }),
+  saveHistory: (subject, concepts, completed = []) =>
+    request("/history", { method: "PUT", body: { subject, concepts, completed } }),
+  setProgress: (id, concept, done) =>
+    request(`/history/${encodeURIComponent(id)}/progress`, { method: "PATCH", body: { concept, done } }),
+  quiz: (params, { signal } = {}) => request("/quiz", { method: "POST", body: params, signal }),
   deleteHistory: (id) => request(`/history/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };

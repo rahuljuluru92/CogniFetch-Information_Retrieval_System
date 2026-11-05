@@ -18,28 +18,45 @@ export function detectImageType(buffer) {
   return SIGNATURES.find((sig) => sig.test(buffer))?.mime ?? null;
 }
 
-/** Accepts a single in-memory image upload in field "image" and verifies its real type. */
+export const MAX_IMAGES = 5;
+
+/**
+ * Accepts up to MAX_IMAGES in-memory images (field "images", or legacy "image"),
+ * verifies each one's real type and exposes them as req.images.
+ */
 export function imageUpload(env) {
   const maxBytes = Math.round(env.MAX_UPLOAD_MB * 1024 * 1024);
   const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: maxBytes, files: 1, fields: 5 },
-  }).single("image");
+    limits: { fileSize: maxBytes, files: MAX_IMAGES, fields: 5 },
+  }).fields([
+    { name: "images", maxCount: MAX_IMAGES },
+    { name: "image", maxCount: 1 },
+  ]);
 
   return (req, res, next) => {
     upload(req, res, (err) => {
       if (err instanceof multer.MulterError) {
         if (err.code === "LIMIT_FILE_SIZE") {
-          return next(new AppError(413, `Image must be ${env.MAX_UPLOAD_MB} MB or smaller`));
+          return next(new AppError(413, `Each image must be ${env.MAX_UPLOAD_MB} MB or smaller`));
+        }
+        if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE") {
+          return next(new AppError(400, `Upload between 1 and ${MAX_IMAGES} images in the "images" field`));
         }
         return next(new AppError(400, err.message));
       }
       if (err) return next(err);
-      if (!req.file) return next(new AppError(400, 'Attach an image in the "image" field'));
 
-      const mime = detectImageType(req.file.buffer);
-      if (!mime) return next(new AppError(415, "Only JPEG, PNG or WebP images are supported"));
-      req.file.mimetype = mime;
+      const files = [...(req.files?.images ?? []), ...(req.files?.image ?? [])];
+      if (files.length === 0) return next(new AppError(400, 'Attach at least one image in the "images" field'));
+      if (files.length > MAX_IMAGES) return next(new AppError(400, `Upload at most ${MAX_IMAGES} images`));
+
+      for (const file of files) {
+        const mime = detectImageType(file.buffer);
+        if (!mime) return next(new AppError(415, "Only JPEG, PNG or WebP images are supported"));
+        file.mimetype = mime;
+      }
+      req.images = files;
       next();
     });
   };

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiError, api, onUnauthorized } from "../lib/api";
 import { validateImage } from "../lib/image";
-import { loadStudy, saveStudy } from "../lib/study";
+import { loadStudy, persistStudy, saveStudy, slugify, toMarkdown } from "../lib/study";
 import { json } from "./utils";
 
 describe("api client", () => {
@@ -43,11 +43,11 @@ describe("api client", () => {
 
   it("uploads images as multipart form data", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(json({ concepts: [] }));
-    const file = new File(["x"], "a.png", { type: "image/png" });
-    await api.extract(file);
+    const files = [new File(["x"], "a.png", { type: "image/png" }), new File(["y"], "b.png", { type: "image/png" })];
+    await api.extract(files);
     const { body, headers } = fetchSpy.mock.calls[0][1];
     expect(body).toBeInstanceOf(FormData);
-    expect(body.get("image")).toBeInstanceOf(File);
+    expect(body.getAll("images").map((f) => f.name)).toEqual(["a.png", "b.png"]);
     expect(headers["Content-Type"]).toBeUndefined();
   });
 });
@@ -76,5 +76,25 @@ describe("study storage", () => {
   it("ignores corrupt data", () => {
     sessionStorage.setItem("cognifetch.study", "{not json");
     expect(loadStudy()).toBeNull();
+  });
+});
+
+describe("study progress & export", () => {
+  it("keeps done flags and the saved id across reloads", () => {
+    const study = saveStudy({ subject: "OS", concepts: ["Paging", "Threads"], completed: ["paging"], historyId: "h1" });
+    expect(study.concepts.map((c) => c.done)).toEqual([true, false]);
+    persistStudy({ ...study, concepts: study.concepts.map((c) => ({ ...c, done: true })) });
+    const reloaded = loadStudy();
+    expect(reloaded.historyId).toBe("h1");
+    expect(reloaded.concepts.every((c) => c.done)).toBe(true);
+  });
+
+  it("exports a Markdown checklist", () => {
+    const study = saveStudy({ subject: "Data Structures", concepts: ["Trees", "Graphs"], completed: ["Graphs"] });
+    const md = toMarkdown(study);
+    expect(md).toContain("# Data Structures");
+    expect(md).toContain("Progress: 1/2 topics done");
+    expect(md).toContain("- [ ] Trees\n- [x] Graphs");
+    expect(slugify("Data Structures & Algorithms!")).toBe("data-structures-algorithms");
   });
 });

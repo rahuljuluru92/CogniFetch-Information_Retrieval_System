@@ -3,11 +3,13 @@ import fishing from "../assets/fishing.png";
 
 const STEPS = [
   ["Create an account", "Register with a username, email and password. Your saved subjects stay private to you."],
-  ["Scan your syllabus", "On the Scan page, enter the subject and upload a clear JPEG, PNG or WebP photo."],
+  ["Scan your syllabus", "Enter the subject, then upload up to 5 photos of your syllabus or simply paste its text."],
   ["Review the topics", "We read the text and list every topic we found. Remove noise or add anything we missed."],
   ["Watch and read", "Press Play on a topic for a focused video plus a short Wikipedia summary."],
-  ["Tune the search", "Prefer a channel? Type its name. Tick “Most watched” for the most popular explanation."],
-  ["Save for later", "Hit Save to keep the list in your profile and reopen it any time."],
+  ["Tune the search", "Prefer a channel? Type its name. Tick “Most watched”, or pick one of the alternative videos."],
+  ["Test yourself", "Press “Quiz me” for a quick AI-generated multiple-choice quiz on any topic."],
+  ["Track your progress", "Tick topics off as you finish them, save the list and watch your progress bar fill up."],
+  ["Take it with you", "Export any list as a Markdown checklist for your notes app."],
 ];
 
 export default function Instructions() {

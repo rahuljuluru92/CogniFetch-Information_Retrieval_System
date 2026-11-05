@@ -4,6 +4,17 @@
 extracts every topic with Gemini, then finds a focused YouTube video and a short Wikipedia explainer for each one.
 Save subjects to your profile and come back to them any time.
 
+### Features
+
+- **Scan or paste**: upload up to 5 photos of a multi-page syllabus, or paste its text directly
+- **Smart topic extraction** with Gemini, plus a rule-based fallback
+- **Video picks**: the best match plus 2 alternatives, with an optional preferred channel or "most watched" filter
+- **Wikipedia summary** next to every video
+- **AI quiz**: "Quiz me" generates multiple-choice questions with explanations and a score
+- **Progress tracking**: tick topics off and see a progress bar per subject, synced to your profile
+- **Export** any list as a Markdown checklist
+- **Account management**: change your password (signs out other devices) or delete your account and data
+
 | Home | Scan | Results | Topic |
 | --- | --- | --- | --- |
 | ![Home](docs/screenshots/Picture1.jpg) | ![Scan](docs/screenshots/Picture2.jpg) | ![Results](docs/screenshots/Picture3.jpg) | ![Topic](docs/screenshots/Picture4.jpg) |
@@ -32,7 +43,7 @@ first-party and no CORS setup is needed. Split deployments (separate frontend ho
 - **Reliability**: validated config that fails fast, timeouts on every outbound call, graceful shutdown, a
   `/api/health` endpoint, in-memory caching of YouTube and Wikipedia lookups to save API quota, and a structured
   JSON error format.
-- **Quality**: 55+ automated tests (unit, API, React components, and MongoDB integration tests in CI), ESLint, a
+- **Quality**: 80+ automated tests (unit, API, React components, and MongoDB integration tests in CI), ESLint, a
   GitHub Actions CI pipeline and a multi-stage Docker image that runs as a non-root user.
 
 ## Quick start
@@ -55,7 +66,7 @@ The Vite dev server proxies `/api` to the API, so everything runs on one origin 
 | --- | --- | --- |
 | `OCR_API_KEY` | Reading images (required) | <https://ocr.space/ocrapi> |
 | `YOUTUBE_API_KEY` | Video search (required) | Google Cloud Console → enable **YouTube Data API v3** |
-| `GEMINI_API_KEY` | Smarter topic extraction (optional) | <https://aistudio.google.com/app/apikey> |
+| `GEMINI_API_KEY` | Smarter topic extraction and quizzes (optional; quizzes are off without it) | <https://aistudio.google.com/app/apikey> |
 | `JWT_SECRET` | Signing sessions (required, 32+ chars) | `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
 
 See [`server/.env.example`](server/.env.example) for every option.
@@ -106,10 +117,14 @@ All endpoints are under `/api`. Errors use the shape `{ "error": { "code", "mess
 | POST | `/auth/logout` | – | Ends the session |
 | GET | `/auth/me` | ✓ | Current user |
 | DELETE | `/auth/me` | ✓ | `{ password }` → deletes the account and all its data |
-| POST | `/extract` | ✓ | multipart `image` (JPEG/PNG/WebP) → `{ concepts: string[], source }` |
-| POST | `/videos/search` | ✓ | `{ concept, subject?, channel?, popular? }` → `{ video, article }` |
-| GET | `/history` | ✓ | Saved subjects |
-| PUT | `/history` | ✓ | `{ subject, concepts[] }` → saves or replaces the subject |
+| PATCH | `/auth/password` | ✓ | `{ currentPassword, newPassword }` → changes the password and signs out other sessions |
+| POST | `/extract` | ✓ | multipart `images` (1–5 JPEG/PNG/WebP pages) → `{ concepts: string[], source }` |
+| POST | `/extract/text` | ✓ | `{ text }` → `{ concepts: string[], source }` (no OCR) |
+| POST | `/videos/search` | ✓ | `{ concept, subject?, channel?, popular? }` → `{ videos[], video, article }` |
+| POST | `/quiz` | ✓ | `{ concept, subject?, count? (3–10) }` → `{ questions: [{ question, options[4], answerIndex, explanation }] }` (requires Gemini) |
+| GET | `/history` | ✓ | Saved subjects (with `completed` progress) |
+| PUT | `/history` | ✓ | `{ subject, concepts[], completed[]? }` → saves or replaces the subject |
+| PATCH | `/history/:id/progress` | ✓ | `{ concept, done }` → marks one topic as done or not done |
 | DELETE | `/history/:id` | ✓ | Removes a saved subject |
 
 ## Security
@@ -120,8 +135,8 @@ commit does not remove it from git history.
 ## Roadmap
 
 - Topic recommendations based on frequent searches
-- Progress tracking per subject
 - Merging videos into playlists to cut playback time
+- Spaced-repetition reminders for quiz topics you got wrong
 
 ## Authors
 

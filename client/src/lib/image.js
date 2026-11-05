@@ -1,4 +1,5 @@
 export const MAX_UPLOAD_MB = Number(import.meta.env.VITE_MAX_UPLOAD_MB ?? 1) || 1;
+export const MAX_IMAGES = 5;
 export const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 /** Returns a user-facing problem with the chosen file, or null when it's acceptable. */

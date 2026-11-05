@@ -51,8 +51,11 @@ export function requireAuth(env) {
     }
 
     if (!mongoose.isValidObjectId(payload.sub)) throw unauthorized();
-    const user = await User.findById(payload.sub);
+    const user = await User.findById(payload.sub).select("+passwordChangedAt");
     if (!user) throw unauthorized("Account no longer exists");
+    if (user.passwordChangedAt && payload.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)) {
+      throw unauthorized("Your password was changed. Please log in again.");
+    }
 
     req.user = user;
     next();

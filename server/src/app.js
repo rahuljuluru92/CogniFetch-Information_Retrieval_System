@@ -13,6 +13,7 @@ import { createLimiters } from "./middleware/rateLimit.js";
 import { authRouter } from "./routes/auth.js";
 import { extractRouter } from "./routes/extract.js";
 import { historyRouter } from "./routes/history.js";
+import { quizRouter } from "./routes/quiz.js";
 import { videosRouter } from "./routes/videos.js";
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -20,6 +21,7 @@ const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".
 export function createApp(env, logger) {
   const app = express();
   const limiters = createLimiters(env);
+  app.locals.env = env;
 
   app.disable("x-powered-by");
   if (env.TRUST_PROXY) app.set("trust proxy", env.TRUST_PROXY);
@@ -73,6 +75,7 @@ export function createApp(env, logger) {
   app.use("/api/auth", authRouter(env, limiters));
   app.use("/api/extract", extractRouter(env, limiters));
   app.use("/api/videos", videosRouter(env, limiters));
+  app.use("/api/quiz", quizRouter(env, limiters));
   app.use("/api/history", historyRouter(env));
   app.use("/api", notFoundHandler);
 

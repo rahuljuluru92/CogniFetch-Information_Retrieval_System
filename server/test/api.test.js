@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SESSION_COOKIE, signSession } from "../src/middleware/auth.js";
 import { User } from "../src/models/User.js";
 import { clearWikipediaCache } from "../src/services/wikipedia.js";
+import { clearQuizCache } from "../src/services/quiz.js";
 import { clearYoutubeCache } from "../src/services/youtube.js";
 import { jsonResponse, PNG, testApp } from "./helpers.js";
 
@@ -15,9 +16,15 @@ const fakeUser = new User({ username: "tester", email: "t@example.com", password
 beforeEach(() => {
   ({ app, env } = testApp());
   cookie = `${SESSION_COOKIE}=${signSession(fakeUser.id, env)}`;
-  vi.spyOn(User, "findById").mockImplementation(async (id) => (String(id) === fakeUser.id ? fakeUser : null));
+  // Behaves like a Mongoose query: awaitable and chainable with .select().
+  vi.spyOn(User, "findById").mockImplementation((id) => {
+    const query = Promise.resolve(String(id) === fakeUser.id ? fakeUser : null);
+    query.select = () => query;
+    return query;
+  });
   clearYoutubeCache();
   clearWikipediaCache();
+  clearQuizCache();
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -169,7 +176,10 @@ describe("POST /api/videos/search", () => {
       }
       if (url.hostname === "www.googleapis.com") {
         return jsonResponse({
-          items: [{ id: { videoId: "abc123" }, snippet: { title: "Paging explained", channelTitle: "OS Guy" } }],
+          items: [
+            { id: { videoId: "abc123" }, snippet: { title: "Paging explained", channelTitle: "OS Guy" } },
+            { id: { videoId: "def456" }, snippet: { title: "Paging part 2", channelTitle: "OS Gal" } },
+          ],
         });
       }
       if (url.pathname === "/w/api.php") return jsonResponse({ query: { search: [{ title: "Memory paging" }] } });
@@ -193,6 +203,8 @@ describe("POST /api/videos/search", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.video).toMatchObject({ videoId: "abc123", title: "Paging explained" });
+    expect(res.body.videos).toHaveLength(2);
+    expect(res.body.videos[1].videoId).toBe("def456");
     expect(res.body.article).toEqual({
       title: "Memory paging",
       extract: "Paging is a memory management scheme.",
@@ -201,6 +213,7 @@ describe("POST /api/videos/search", () => {
     const yt = new URL(String(fetch.mock.calls.find(([u]) => String(u).includes("youtube"))[0]));
     expect(yt.searchParams.get("order")).toBe("viewCount");
     expect(yt.searchParams.get("q")).toBe("Paging Operating Systems");
+    expect(yt.searchParams.get("maxResults")).toBe("3");
   });
 
   it("restricts to a channel when one is given and caches results", async () => {
@@ -231,6 +244,98 @@ describe("POST /api/videos/search", () => {
 
   it("validates the request body", async () => {
     const res = await request(app).post("/api/videos/search").set("Cookie", cookie).send({ concept: "" });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("multi-page and text extraction", () => {
+  it("OCRs every uploaded page in order and merges the topics", async () => {
+    const pages = ["Paging, Segmentation", "Deadlocks"];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      jsonResponse({ ParsedResults: [{ ParsedText: pages.shift() }] }),
+    );
+    const res = await request(app)
+      .post("/api/extract")
+      .set("Cookie", cookie)
+      .attach("images", PNG, "p1.png")
+      .attach("images", PNG, "p2.png");
+    expect(res.status).toBe(200);
+    expect(res.body.concepts).toEqual(["Paging", "Segmentation", "Deadlocks"]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects more than 5 images", async () => {
+    let req = request(app).post("/api/extract").set("Cookie", cookie);
+    for (let i = 0; i < 6; i++) req = req.attach("images", PNG, `p${i}.png`);
+    const res = await req;
+    expect(res.status).toBe(400);
+  });
+
+  it("extracts topics from pasted text without OCR", async () => {
+    const spy = vi.spyOn(globalThis, "fetch");
+    const res = await request(app)
+      .post("/api/extract/text")
+      .set("Cookie", cookie)
+      .send({ text: "Unit I - Trees, Graphs\nHashing" });
+    expect(res.status).toBe(200);
+    expect(res.body.concepts).toEqual(["Trees", "Graphs", "Hashing"]);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("validates pasted text", async () => {
+    await request(app).post("/api/extract/text").set("Cookie", cookie).send({ text: "" }).expect(400);
+    await request(app).post("/api/extract/text").send({ text: "Trees" }).expect(401);
+  });
+});
+
+describe("POST /api/quiz", () => {
+  const question = (q, answerIndex = 1) => ({
+    question: q,
+    options: ["A", "B", "C", "D"],
+    answerIndex,
+    explanation: "Because.",
+  });
+
+  it("returns 503 when Gemini is not configured", async () => {
+    const res = await request(app).post("/api/quiz").set("Cookie", cookie).send({ concept: "Paging" });
+    expect(res.status).toBe(503);
+  });
+
+  it("generates, sanitises and caches quizzes", async () => {
+    ({ app } = testApp({ GEMINI_API_KEY: "g" }));
+    const generated = [question("Q1"), question("Q2", 7), { question: "bad" }, question("Q3", 0)];
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({ candidates: [{ content: { parts: [{ text: JSON.stringify(generated) }] } }] }),
+    );
+    const body = { concept: "Paging", subject: "OS", count: 3 };
+    const res = await request(app).post("/api/quiz").set("Cookie", cookie).send(body);
+    expect(res.status).toBe(200);
+    expect(res.body.questions.map((q) => q.question)).toEqual(["Q1", "Q3"]);
+    expect(JSON.parse(fetch.mock.calls[0][1].body).contents[0].parts[0].text).toContain('Topic: "Paging"');
+
+    await request(app).post("/api/quiz").set("Cookie", cookie).send(body).expect(200);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("validates the question count", async () => {
+    await request(app).post("/api/quiz").set("Cookie", cookie).send({ concept: "x", count: 50 }).expect(400);
+  });
+});
+
+describe("password change sessions", () => {
+  it("rejects sessions issued before the password changed", async () => {
+    fakeUser.passwordChangedAt = new Date(Date.now() + 5000);
+    const res = await request(app).get("/api/auth/me").set("Cookie", cookie);
+    expect(res.status).toBe(401);
+    expect(res.body.error.message).toMatch(/password was changed/);
+    fakeUser.passwordChangedAt = undefined;
+  });
+
+  it("validates the new password", async () => {
+    const res = await request(app)
+      .patch("/api/auth/password")
+      .set("Cookie", cookie)
+      .send({ currentPassword: "x", newPassword: "short" });
     expect(res.status).toBe(400);
   });
 });

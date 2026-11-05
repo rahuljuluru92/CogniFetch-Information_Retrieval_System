@@ -1,11 +1,13 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Route } from "react-router";
 import RequireAuth from "../components/RequireAuth";
 import Login from "../pages/Login";
 import Register from "../pages/Register";
+import Profile from "../pages/Profile";
 import Results from "../pages/Results";
+import Scan from "../pages/Scan";
 import { saveStudy } from "../lib/study";
 import { json, mockApi, renderAt } from "./utils";
 
@@ -111,12 +113,138 @@ describe("Results", () => {
     expect(screen.getByText("2 of 2 topics")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Play Paging" }));
-    const frame = await screen.findByTitle("Paging &amp; you");
+    const frame = await screen.findByTitle("Paging & you");
     expect(frame).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/abc123");
     expect(screen.getByText("Paging & you · OS Guy")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Read more on Wikipedia/ })).toHaveAttribute("rel", "noopener noreferrer");
 
     await user.click(screen.getByRole("button", { name: /Save/ }));
-    await waitFor(() => expect(saved).toEqual({ subject: "Operating Systems", concepts: ["Segmentation", "Paging"] }));
+    await waitFor(() =>
+      expect(saved).toEqual({ subject: "Operating Systems", concepts: ["Segmentation", "Paging"], completed: [] }),
+    );
+  });
+});
+
+describe("Results: progress, alternatives and quiz", () => {
+  it("syncs progress for saved subjects and rolls back on failure", async () => {
+    saveStudy({ subject: "OS", concepts: ["Paging", "Threads"], completed: [], historyId: "h1" });
+    const progress = [];
+    mockApi({
+      "GET /auth/me": me,
+      "PATCH /history/h1/progress": (init) => {
+        progress.push(JSON.parse(init.body));
+        return progress.length === 1 ? json({ item: {} }) : json({ error: { message: "Server down" } }, 500);
+      },
+    });
+    renderAt("/results", <Results />);
+    const user = userEvent.setup();
+
+    const paging = await screen.findByRole("checkbox", { name: "Mark Paging as done" });
+    await user.click(paging);
+    expect(await screen.findByText(/1 of 2 topics done/)).toBeInTheDocument();
+    expect(progress[0]).toEqual({ concept: "Paging", done: true });
+
+    await user.click(screen.getByRole("checkbox", { name: "Mark Threads as done" }));
+    await waitFor(() => expect(screen.getByText(/1 of 2 topics done/)).toBeInTheDocument());
+    expect(screen.getByRole("checkbox", { name: "Mark Threads as done" })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("lets the user switch to an alternative video", async () => {
+    saveStudy({ subject: "OS", concepts: ["Paging"] });
+    const videos = [
+      { videoId: "v1", title: "First", channelTitle: "A", thumbnail: "https://i.ytimg.com/1.jpg" },
+      { videoId: "v2", title: "Second", channelTitle: "B", thumbnail: "https://i.ytimg.com/2.jpg" },
+    ];
+    mockApi({ "GET /auth/me": me, "POST /videos/search": json({ video: videos[0], videos, article: null }) });
+    renderAt("/results", <Results />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Play Paging" }));
+    expect(await screen.findByTitle("First")).toHaveAttribute("src", expect.stringContaining("/embed/v1"));
+    await user.click(screen.getByRole("button", { name: "Watch Second" }));
+    expect(screen.getByTitle("Second")).toHaveAttribute("src", expect.stringContaining("/embed/v2"));
+  });
+
+  it("runs a quiz and shows the score", async () => {
+    saveStudy({ subject: "OS", concepts: ["Paging"] });
+    const q = (question, answerIndex) => ({ question, options: ["A1", "B1", "C1", "D1"], answerIndex, explanation: `Why ${question}` });
+    mockApi({ "GET /auth/me": me, "POST /quiz": json({ questions: [q("Q one", 0), q("Q two", 2)] }) });
+    renderAt("/results", <Results />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Quiz me on Paging" }));
+
+    const quiz = await screen.findByRole("region", { name: "Quiz on Paging" });
+    const [first, second] = within(quiz).getAllByRole("listitem");
+    await user.click(within(first).getByRole("button", { name: /A1/ }));
+    expect(within(first).getByText("Why Q one")).toBeInTheDocument();
+    await user.click(within(second).getByRole("button", { name: /A1/ }));
+    expect(screen.getByRole("status")).toHaveTextContent("You scored 1 out of 2");
+  });
+});
+
+describe("Scan", () => {
+  it("extracts topics from pasted text", async () => {
+    let sent;
+    mockApi({
+      "GET /auth/me": me,
+      "POST /extract/text": (init) => {
+        sent = JSON.parse(init.body);
+        return json({ concepts: ["Trees", "Graphs"], source: "heuristic" });
+      },
+    });
+    renderAt("/scan", <Scan />, { extraRoutes: <Route path="/results" element={<p>results page</p>} /> });
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Subject"), "DS");
+    await user.click(screen.getByRole("tab", { name: /Paste text/ }));
+    await user.type(screen.getByLabelText("Syllabus text"), "Trees, Graphs");
+    await user.click(screen.getByRole("button", { name: /Find topics/ }));
+    expect(await screen.findByText("results page")).toBeInTheDocument();
+    expect(sent).toEqual({ text: "Trees, Graphs" });
+    expect(JSON.parse(sessionStorage.getItem("cognifetch.study")).concepts).toEqual(["Trees", "Graphs"]);
+  });
+
+  it("accepts several pages and rejects unsupported files", async () => {
+    mockApi({ "GET /auth/me": me });
+    URL.createObjectURL = vi.fn(() => "blob:preview");
+    URL.revokeObjectURL = vi.fn();
+    renderAt("/scan", <Scan />);
+    const user = userEvent.setup({ applyAccept: false });
+    const input = await screen.findByLabelText("Syllabus images");
+    await user.upload(input, [
+      new File(["a"], "p1.png", { type: "image/png" }),
+      new File(["b"], "p2.jpg", { type: "image/jpeg" }),
+      new File(["c"], "notes.pdf", { type: "application/pdf" }),
+    ]);
+    expect(screen.getByAltText("Page 1")).toBeInTheDocument();
+    expect(screen.getByAltText("Page 2")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("notes.pdf");
+    await user.click(screen.getByRole("button", { name: "Remove page 1" }));
+    expect(screen.queryByAltText("Page 2")).not.toBeInTheDocument();
+  });
+});
+
+describe("Profile: change password", () => {
+  it("validates the confirmation and submits the change", async () => {
+    let body;
+    mockApi({
+      "GET /auth/me": me,
+      "GET /history": json({ items: [] }),
+      "PATCH /auth/password": (init) => {
+        body = JSON.parse(init.body);
+        return new Response(null, { status: 204 });
+      },
+    });
+    renderAt("/profile", <Profile />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Change password" }));
+    await user.type(screen.getByLabelText("Current password"), "old-password");
+    await user.type(screen.getByLabelText("New password"), "new-password-1");
+    await user.type(screen.getByLabelText("Confirm new password"), "new-password-2");
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+    expect(await screen.findByText("Passwords don't match")).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("Confirm new password"));
+    await user.type(screen.getByLabelText("Confirm new password"), "new-password-1");
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+    await waitFor(() => expect(body).toEqual({ currentPassword: "old-password", newPassword: "new-password-1" }));
   });
 });

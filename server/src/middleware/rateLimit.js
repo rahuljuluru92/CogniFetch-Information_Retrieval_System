@@ -17,5 +17,6 @@ export function createLimiters(env) {
     // OCR + LLM calls are the expensive ones (and cost API quota).
     extract: make(60 * 60 * 1000, 30, { skip }),
     video: make(60 * 60 * 1000, 300, { skip }),
+    quiz: make(60 * 60 * 1000, 60, { skip }),
   };
 }
