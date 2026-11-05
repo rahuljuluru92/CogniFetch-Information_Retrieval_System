@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@theme {
+  --font-michroma: "Michroma", ui-sans-serif, system-ui, sans-serif;
+  --font-outfit: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-sora: "Sora", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    scrollbar-color: #1eacfe #0f172a;
+    scrollbar-width: thin;
+  }
+  body {
+    @apply font-outfit;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-sky-400;
+  }
+}
+
+@utility bg-hero {
+  background-image: url("./assets/blurry-gradient-haikei.png");
+  background-size: cover;
+  background-position: center;
+}
+
+@utility card {
+  @apply rounded-2xl border border-slate-700/60 bg-slate-800/70 shadow-xl shadow-black/30 backdrop-blur;
+}
+
+@utility input {
+  @apply w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder-slate-500 transition focus:border-sky-400 focus:outline-none;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2 font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-sky-500 text-slate-950 hover:bg-sky-400;
+}
+
+@utility btn-ghost {
+  @apply btn border border-slate-600 text-slate-200 hover:border-sky-400 hover:text-sky-300;
+}
+
+@utility btn-danger {
+  @apply btn bg-red-600 text-white hover:bg-red-500;
+}
+
+@utility gradient-text {
+  @apply bg-gradient-to-r from-blue-500 via-indigo-400 to-sky-400 bg-clip-text text-transparent;
+}

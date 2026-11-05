@@ -1,0 +1,30 @@
+# Local production-like stack: `docker compose up --build`, then open http://localhost:3500
+services:
+  app:
+    build: .
+    ports:
+      - "3500:3500"
+    env_file: server/.env
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/cognifetch
+      NODE_ENV: production
+      # Plain http on localhost; use HTTPS (and drop this) anywhere real.
+      COOKIE_SECURE: "false"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
