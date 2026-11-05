@@ -20,6 +20,17 @@ const progressSchema = z.object({
   done: z.boolean(),
 });
 
+/** Removes case-insensitive duplicates, keeping the first spelling of each. */
+export function dedupeCaseInsensitive(list) {
+  const seen = new Set();
+  return list.filter((item) => {
+    const key = item.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function historyRouter(env) {
   const router = Router();
   router.use(requireAuth(env));
@@ -32,7 +43,7 @@ export function historyRouter(env) {
   // Upsert by subject (case-insensitive): saving the same subject again replaces its list.
   router.put("/", validate(saveSchema), async (req, res) => {
     const { subject, concepts, completed } = req.valid.body;
-    const unique = [...new Map(concepts.map((c) => [c.toLowerCase(), c])).values()];
+    const unique = dedupeCaseInsensitive(concepts);
     const item = await History.findOneAndUpdate(
       { user: req.user._id, subjectKey: subjectKeyOf(subject) },
       { $set: { subject, concepts: unique, completed: reconcileCompleted(unique, completed) } },

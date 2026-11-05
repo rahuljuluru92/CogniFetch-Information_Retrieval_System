@@ -4,6 +4,7 @@ import { fetchJson } from "../src/lib/http.js";
 import { detectImageType } from "../src/middleware/upload.js";
 import { History, reconcileCompleted } from "../src/models/History.js";
 import { User } from "../src/models/User.js";
+import { dedupeCaseInsensitive } from "../src/routes/history.js";
 import { sanitizeQuiz } from "../src/services/quiz.js";
 import { PNG } from "./helpers.js";
 
@@ -90,5 +91,11 @@ describe("sanitizeQuiz", () => {
       ]),
     ).toEqual([{ question: "Q", options: ["a", "b", "c", "d"], answerIndex: 3, explanation: "E" }]);
     expect(sanitizeQuiz("nope")).toEqual([]);
+  });
+});
+
+describe("dedupeCaseInsensitive", () => {
+  it("keeps the first spelling of each item, in order", () => {
+    expect(dedupeCaseInsensitive(["Paging", "paging", "Threads", "PAGING"])).toEqual(["Paging", "Threads"]);
   });
 });
