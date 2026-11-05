@@ -3,9 +3,11 @@ import toast from "react-hot-toast";
 import { FaBookOpen, FaSignOutAlt, FaTrash } from "react-icons/fa";
 import { useNavigate } from "react-router";
 import FormField from "../components/FormField";
+import ProgressBar from "../components/ProgressBar";
 import Spinner from "../components/Spinner";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
+import { fieldErrors } from "../lib/errors";
 import { saveStudy } from "../lib/study";
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
@@ -32,7 +34,7 @@ export default function Profile() {
   }, []);
 
   function open(item) {
-    saveStudy({ subject: item.subject, concepts: item.concepts });
+    saveStudy({ subject: item.subject, concepts: item.concepts, completed: item.completed, historyId: item.id });
     navigate("/results");
   }
 
@@ -66,6 +68,8 @@ export default function Profile() {
       setDeleting(false);
     }
   }
+
+  if (!user) return <Spinner fullScreen label="Loading your profile…" />;
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 py-10">
@@ -108,11 +112,19 @@ export default function Profile() {
           <ul className="flex flex-col gap-3">
             {items.map((item) => (
               <li key={item.id} className="card flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-lg font-bold text-sky-400">{item.subject}</p>
                   <p className="text-sm text-slate-400">
-                    {item.concepts.length} topics · updated {dateFormat.format(new Date(item.updatedAt))}
+                    {(item.completed ?? []).length} of {item.concepts.length} topics done · updated{" "}
+                    {dateFormat.format(new Date(item.updatedAt))}
                   </p>
+                  <div className="mt-2 max-w-sm">
+                    <ProgressBar
+                      done={(item.completed ?? []).length}
+                      total={item.concepts.length}
+                      label={`${item.subject} progress`}
+                    />
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button type="button" className="btn-primary" onClick={() => open(item)}>
@@ -132,6 +144,8 @@ export default function Profile() {
           </ul>
         )}
       </section>
+
+      <ChangePassword />
 
       <section className="rounded-2xl border border-red-500/50 bg-red-950/30 p-6">
         <h2 className="mb-2 text-lg font-semibold text-red-300">Danger zone</h2>
@@ -165,5 +179,96 @@ export default function Profile() {
         )}
       </section>
     </main>
+  );
+}
+
+function ChangePassword() {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ currentPassword: "", newPassword: "", confirm: "" });
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const update = (event) => setForm({ ...form, [event.target.name]: event.target.value });
+  const close = () => {
+    setOpen(false);
+    setForm({ currentPassword: "", newPassword: "", confirm: "" });
+    setErrors({});
+  };
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (form.newPassword !== form.confirm) return setErrors({ confirm: "Passwords don't match" });
+    setErrors({});
+    setSaving(true);
+    try {
+      await api.changePassword(form.currentPassword, form.newPassword);
+      toast.success("Password changed. Other devices have been signed out.");
+      close();
+    } catch (err) {
+      const byField = fieldErrors(err);
+      setErrors(Object.keys(byField).length ? byField : { currentPassword: err.message });
+    }
+    setSaving(false);
+  }
+
+  return (
+    <section className="card p-6">
+      <h2 className="mb-2 text-lg font-semibold text-white">Password</h2>
+      {open ? (
+        <form onSubmit={handleSubmit} className="flex max-w-sm flex-col gap-3" noValidate>
+          <FormField
+            label="Current password"
+            name="currentPassword"
+            type="password"
+            autoComplete="current-password"
+            value={form.currentPassword}
+            onChange={update}
+            error={errors.currentPassword}
+            required
+          />
+          <FormField
+            label="New password"
+            name="newPassword"
+            type="password"
+            autoComplete="new-password"
+            minLength={8}
+            value={form.newPassword}
+            onChange={update}
+            error={errors.newPassword}
+            hint="At least 8 characters"
+            required
+          />
+          <FormField
+            label="Confirm new password"
+            name="confirm"
+            type="password"
+            autoComplete="new-password"
+            value={form.confirm}
+            onChange={update}
+            error={errors.confirm}
+            required
+          />
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={saving || !form.currentPassword || !form.newPassword || !form.confirm}
+            >
+              {saving ? "Saving…" : "Change password"}
+            </button>
+            <button type="button" className="btn-ghost" onClick={close}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <p className="mb-4 text-sm text-slate-400">Changing your password signs you out on every other device.</p>
+          <button type="button" className="btn-ghost" onClick={() => setOpen(true)}>
+            Change password
+          </button>
+        </>
+      )}
+    </section>
   );
 }

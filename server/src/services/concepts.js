@@ -1,4 +1,4 @@
-import { fetchJson } from "../lib/http.js";
+import { generateJson } from "../lib/gemini.js";
 
 const MAX_CONCEPTS = 60;
 const MAX_CONCEPT_LENGTH = 120;
@@ -54,28 +54,11 @@ export function heuristicConcepts(text) {
 }
 
 async function geminiConcepts(text, env) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-    env.GEMINI_MODEL,
-  )}:generateContent`;
-
-  const data = await fetchJson(url, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: PROMPT.replace("{{TEXT}}", text.slice(0, 20000)) }] }],
-      generationConfig: {
-        temperature: 0,
-        maxOutputTokens: 2048,
-        responseMimeType: "application/json",
-        responseSchema: { type: "ARRAY", items: { type: "STRING" } },
-      },
-    }),
-    timeoutMs: env.HTTP_TIMEOUT_MS,
-    service: "Gemini",
-  });
-
-  const output = (data?.candidates?.[0]?.content?.parts ?? []).map((part) => part.text ?? "").join("");
-  const parsed = JSON.parse(output);
+  const parsed = await generateJson(
+    PROMPT.replace("{{TEXT}}", text.slice(0, 20000)),
+    { type: "ARRAY", items: { type: "STRING" } },
+    env,
+  );
   if (!Array.isArray(parsed)) throw new Error("Gemini did not return an array");
   return normalizeConcepts(parsed);
 }

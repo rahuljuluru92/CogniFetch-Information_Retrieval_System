@@ -20,8 +20,17 @@ async function resolveChannelId(channel, env) {
   return data?.items?.[0]?.id?.channelId;
 }
 
-/** Finds the single best embeddable video for a concept. */
-export async function findVideo({ concept, subject, channel, popular }, env) {
+const MAX_VIDEOS = 3;
+
+const toVideo = (item) => ({
+  videoId: item.id.videoId,
+  title: item.snippet?.title ?? "",
+  channelTitle: item.snippet?.channelTitle ?? "",
+  thumbnail: item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? null,
+});
+
+/** Finds the best embeddable videos for a concept (same quota cost as fetching just one). */
+export async function findVideos({ concept, subject, channel, popular }, env) {
   if (!env.YOUTUBE_API_KEY) throw unavailable("Video search is not configured on this server");
 
   const query = [concept, subject].filter(Boolean).join(" ");
@@ -35,7 +44,7 @@ export async function findVideo({ concept, subject, channel, popular }, env) {
     {
       part: "snippet",
       type: "video",
-      maxResults: 1,
+      maxResults: MAX_VIDEOS,
       q: query,
       videoEmbeddable: "true",
       safeSearch: "strict",
@@ -45,17 +54,10 @@ export async function findVideo({ concept, subject, channel, popular }, env) {
     env,
   );
 
-  const item = data?.items?.[0];
-  if (!item?.id?.videoId) throw notFound("No video found for this topic");
+  const videos = (data?.items ?? []).filter((item) => item?.id?.videoId).map(toVideo);
+  if (videos.length === 0) throw notFound("No video found for this topic");
 
-  const video = {
-    videoId: item.id.videoId,
-    title: item.snippet?.title ?? "",
-    channelTitle: item.snippet?.channelTitle ?? "",
-    thumbnail: item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? null,
-    query,
-    channelMatched: channel ? Boolean(channelId) : undefined,
-  };
-  cache.set(cacheKey, video);
-  return video;
+  const result = { videos, query, channelMatched: channel ? Boolean(channelId) : undefined };
+  cache.set(cacheKey, result);
+  return result;
 }

@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { TtlCache } from "../src/lib/cache.js";
 import { fetchJson } from "../src/lib/http.js";
 import { detectImageType } from "../src/middleware/upload.js";
-import { History } from "../src/models/History.js";
+import { History, reconcileCompleted } from "../src/models/History.js";
 import { User } from "../src/models/User.js";
+import { dedupeCaseInsensitive } from "../src/routes/history.js";
+import { sanitizeQuiz } from "../src/services/quiz.js";
 import { PNG } from "./helpers.js";
 
 describe("detectImageType", () => {
@@ -67,5 +69,33 @@ describe("models (no database needed)", () => {
   it("requires at least one concept in a history entry", async () => {
     const entry = new History({ user: new User()._id, subject: "OS", subjectKey: "os", concepts: [] });
     await expect(entry.validate()).rejects.toThrow(/concepts/);
+  });
+});
+
+describe("reconcileCompleted", () => {
+  it("keeps only known concepts, using the list's spelling", () => {
+    expect(reconcileCompleted(["Paging", "Threads"], ["paging", "Gone", "PAGING"])).toEqual(["Paging"]);
+  });
+});
+
+describe("sanitizeQuiz", () => {
+  it("drops malformed questions and trims fields", () => {
+    const good = { question: " Q ", options: ["a", "b", "c", "d"], answerIndex: 3, explanation: " E " };
+    expect(
+      sanitizeQuiz([
+        good,
+        { ...good, options: ["a", "b"] },
+        { ...good, answerIndex: 4 },
+        { ...good, options: ["a", "b", "c", ""] },
+        null,
+      ]),
+    ).toEqual([{ question: "Q", options: ["a", "b", "c", "d"], answerIndex: 3, explanation: "E" }]);
+    expect(sanitizeQuiz("nope")).toEqual([]);
+  });
+});
+
+describe("dedupeCaseInsensitive", () => {
+  it("keeps the first spelling of each item, in order", () => {
+    expect(dedupeCaseInsensitive(["Paging", "paging", "Threads", "PAGING"])).toEqual(["Paging", "Threads"]);
   });
 });

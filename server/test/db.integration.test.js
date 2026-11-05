@@ -111,6 +111,55 @@ describe.skipIf(!uri)("with a real database", () => {
     await alice.delete("/api/history/not-an-id").expect(404);
   });
 
+  it("tracks per-concept progress", async () => {
+    const agent = request.agent(app);
+    await register(agent).expect(201);
+    const saved = await agent
+      .put("/api/history")
+      .send({ subject: "OS", concepts: ["Paging", "Threads"], completed: ["paging", "Unknown"] })
+      .expect(200);
+    expect(saved.body.item.completed).toEqual(["Paging"]);
+
+    const id = saved.body.item.id;
+    const done = await agent.patch(`/api/history/${id}/progress`).send({ concept: "threads", done: true }).expect(200);
+    expect(done.body.item.completed).toEqual(["Paging", "Threads"]);
+    const undone = await agent.patch(`/api/history/${id}/progress`).send({ concept: "Paging", done: false }).expect(200);
+    expect(undone.body.item.completed).toEqual(["Threads"]);
+    await agent.patch(`/api/history/${id}/progress`).send({ concept: "Nope", done: true }).expect(404);
+
+    // Removing a concept from the list also removes it from completed.
+    const resaved = await agent.put("/api/history").send({ subject: "OS", concepts: ["Paging"], completed: ["Threads"] });
+    expect(resaved.body.item.completed).toEqual([]);
+  });
+
+  it("changes the password and signs out other sessions", async () => {
+    const laptop = request.agent(app);
+    const phone = request.agent(app);
+    await register(laptop).expect(201);
+    await phone.post("/api/auth/login").send({ email: "alice@example.com", password: "correct horse battery" }).expect(200);
+
+    // Make sure the new password timestamp lands in a later second than the existing sessions.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+
+    await laptop
+      .patch("/api/auth/password")
+      .send({ currentPassword: "wrong", newPassword: "brand new password" })
+      .expect(401);
+    await laptop
+      .patch("/api/auth/password")
+      .send({ currentPassword: "correct horse battery", newPassword: "correct horse battery" })
+      .expect(400);
+    await laptop
+      .patch("/api/auth/password")
+      .send({ currentPassword: "correct horse battery", newPassword: "brand new password" })
+      .expect(204);
+
+    await laptop.get("/api/auth/me").expect(200);
+    await phone.get("/api/auth/me").expect(401);
+    await phone.post("/api/auth/login").send({ email: "alice@example.com", password: "correct horse battery" }).expect(401);
+    await phone.post("/api/auth/login").send({ email: "alice@example.com", password: "brand new password" }).expect(200);
+  });
+
   it("deletes the account and its data only with the right password", async () => {
     const agent = request.agent(app);
     await register(agent).expect(201);

@@ -9,6 +9,8 @@ const historySchema = new mongoose.Schema(
       type: [{ type: String, trim: true, maxlength: 200 }],
       validate: [(list) => list.length > 0 && list.length <= 100, "1–100 concepts required"],
     },
+    // Concepts the student has marked as done (always a subset of `concepts`).
+    completed: { type: [{ type: String, trim: true, maxlength: 200 }], default: [] },
   },
   {
     timestamps: true,
@@ -28,6 +30,12 @@ const historySchema = new mongoose.Schema(
 // One saved list per subject per user; saving the same subject again updates it.
 historySchema.index({ user: 1, subjectKey: 1 }, { unique: true });
 historySchema.index({ user: 1, updatedAt: -1 });
+
+/** Keeps only completed entries that still exist in the concept list (case-insensitive), de-duplicated. */
+export function reconcileCompleted(concepts, completed = []) {
+  const byKey = new Map(concepts.map((c) => [c.toLowerCase(), c]));
+  return [...new Set(completed.map((c) => byKey.get(c.toLowerCase())).filter(Boolean))];
+}
 
 export const subjectKeyOf = (subject) => subject.trim().toLowerCase();
 

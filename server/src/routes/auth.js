@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { z } from "zod";
-import { conflict, unauthorized } from "../lib/errors.js";
+import { badRequest, conflict, unauthorized } from "../lib/errors.js";
 import {
   clearSessionCookie,
   requireAuth,
@@ -31,6 +31,11 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().min(1, "Email is required"),
   password: z.string().min(1, "Password is required").max(200),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Enter your current password"),
+  newPassword: password,
 });
 
 const deleteSchema = z.object({ password: z.string().min(1, "Confirm with your password") });
@@ -85,6 +90,27 @@ export function authRouter(env, limiters) {
 
   router.get("/me", auth, (req, res) => {
     res.json({ user: req.user });
+  });
+
+  // Changing the password signs out every other session; this one gets a fresh cookie.
+  router.patch("/password", limiters.auth, auth, validate(changePasswordSchema), async (req, res) => {
+    const { currentPassword, newPassword } = req.valid.body;
+    const user = await User.findById(req.user.id).select("+passwordHash");
+    if (!(await user.verifyPassword(currentPassword))) {
+      throw unauthorized("Current password is incorrect");
+    }
+    if (await user.verifyPassword(newPassword)) {
+      throw badRequest("New password must be different from the current one", [
+        { field: "newPassword", message: "New password must be different from the current one" },
+      ]);
+    }
+    user.passwordHash = await User.hashPassword(newPassword);
+    // Whole seconds, so a token issued right after this (same second) is still valid.
+    user.passwordChangedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
+    await user.save();
+
+    setSessionCookie(res, signSession(user.id, env), env);
+    res.status(204).end();
   });
 
   router.delete("/me", auth, validate(deleteSchema), async (req, res) => {

@@ -10,6 +10,8 @@ const userSchema = new mongoose.Schema(
     usernameKey: { type: String, required: true, select: false },
     email: { type: String, required: true, trim: true, lowercase: true, maxlength: 254 },
     passwordHash: { type: String, required: true, select: false },
+    // Sessions issued before this moment are rejected (set when the password changes).
+    passwordChangedAt: { type: Date, select: false },
   },
   {
     timestamps: true,
@@ -20,6 +22,7 @@ const userSchema = new mongoose.Schema(
         delete ret.__v;
         delete ret.passwordHash;
         delete ret.usernameKey;
+        delete ret.passwordChangedAt;
         return ret;
       },
     },
